@@ -135,6 +135,9 @@ tHID_STATUS hidh_conn_disconnect (UINT8 dhandle)
     {
         p_hcon->conn_state = HID_CONN_STATE_DISCONNECTING;
 
+        /* Set l2cap idle timeout to 0 (so ACL link is disconnected
+         * immediately after last channel is closed) */
+        L2CA_SetIdleTimeoutByBdAddr(hh_cb.devices[dhandle].addr, 0);
         /* Disconnect both interrupt and control channels */
         if (p_hcon->intr_cid)
             L2CA_DisconnectReq (p_hcon->intr_cid);
@@ -203,19 +206,9 @@ static void hidh_l2cif_connect_ind (BD_ADDR  bd_addr, UINT16 l2cap_cid, UINT16 p
 
     HIDH_TRACE_EVENT2 ("HID-Host Rcvd L2CAP conn ind, PSM: 0x%04x  CID 0x%x", psm, l2cap_cid);
 
-    /* always reject incoming connection from unpaired HID devices. */
-    if (!btm_sec_is_a_paired_dev(bd_addr) && psm == HID_PSM_CONTROL)
-    {
-        HIDH_TRACE_ERROR0 ("HID-Host Rcvd L2CAP conn ind from unpaired device, "
-            "sending security block");
-        L2CA_ConnectRsp (bd_addr, l2cap_id, l2cap_cid, L2CAP_CONN_SECURITY_BLOCK, 0);
-        return;
-    }
-
     /* always add incoming connection device into HID database by default */
     if (HID_HostAddDev(bd_addr, HID_ATTR_MASK_IGNORE, &i) != HID_SUCCESS)
     {
-        HIDH_TRACE_ERROR0 ("HID-Host failed to add device, sending security block");
         L2CA_ConnectRsp (bd_addr, l2cap_id, l2cap_cid, L2CAP_CONN_SECURITY_BLOCK, 0);
         return;
     }
@@ -389,7 +382,8 @@ static void hidh_l2cif_connect_cfm (UINT16 l2cap_cid, UINT16 result)
     if ((p_hcon == NULL)
      || (!(p_hcon->conn_flags & HID_CONN_FLAGS_IS_ORIG))
      || ((l2cap_cid == p_hcon->ctrl_cid) && (p_hcon->conn_state != HID_CONN_STATE_CONNECTING_CTRL))
-     || ((l2cap_cid == p_hcon->intr_cid) && (p_hcon->conn_state != HID_CONN_STATE_CONNECTING_INTR)))
+     || ((l2cap_cid == p_hcon->intr_cid) && (p_hcon->conn_state != HID_CONN_STATE_CONNECTING_INTR)
+     && (p_hcon->conn_state != HID_CONN_STATE_DISCONNECTING)))
     {
         HIDH_TRACE_WARNING1 ("HID-Host Rcvd unexpected conn cnf, CID 0x%x ", l2cap_cid);
         return;

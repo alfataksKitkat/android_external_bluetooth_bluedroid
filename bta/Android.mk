@@ -1,5 +1,3 @@
-ifneq ($(TARGET_SIMULATOR),true)
-
 LOCAL_PATH:= $(call my-dir)
 
 include $(CLEAR_VARS)
@@ -53,6 +51,9 @@ LOCAL_SRC_FILES:= \
     ./hh/bta_hh_le.c \
     ./hh/bta_hh_utils.c \
     ./hh/bta_hh_main.c \
+    ./hd/bta_hd_act.c \
+    ./hd/bta_hd_api.c \
+    ./hd/bta_hd_main.c \
     ./pb/bta_pbs_cfg.c \
     ./fs/bta_fs_ci.c \
     ./fs/bta_fs_cfg.c \
@@ -114,5 +115,3 @@ LOCAL_C_INCLUDES+= . \
 
 
 include $(BUILD_STATIC_LIBRARY)
-
-endif  # TARGET_SIMULATOR != true

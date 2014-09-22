@@ -29,6 +29,7 @@
 #include "bd.h"
 #include "utl.h"
 #include "bta_hh_api.h"
+#include <time.h>
 
 #if BTA_HH_LE_INCLUDED == TRUE
 #include "bta_gatt_api.h"
@@ -68,6 +69,7 @@ enum
     BTA_HH_GATT_READ_DESCR_CMPL_EVT,
     BTA_HH_GATT_WRITE_DESCR_CMPL_EVT,
     BTA_HH_API_SCPP_UPDATE_EVT,
+    BTA_HH_GATT_ENC_CMPL_EVT,
 #endif
 
     /* not handled by execute state machine */
@@ -191,6 +193,7 @@ typedef union
     tBTA_HH_LE_CLOSE         le_close;
     tBTA_GATTC_OPEN          le_open;
     tBTA_HH_SCPP_UPDATE      le_scpp_update;
+    tBTA_GATTC_ENC_CMPL_CB   le_enc_cmpl;
 #endif
     tBTA_HH_SDP_CMP_AFTER_BONDING sdp_cmp_after_bonding;
 } tBTA_HH_DATA;
@@ -211,7 +214,7 @@ typedef struct
 }tBTA_HH_LE_RPT;
 
 #ifndef BTA_HH_LE_RPT_MAX
-#define BTA_HH_LE_RPT_MAX       10
+#define BTA_HH_LE_RPT_MAX       20
 #endif
 
 typedef struct
@@ -293,6 +296,7 @@ typedef struct
     UINT8               scps_notify;   /* scan refresh supported/notification enabled */
 #endif
 
+    BOOLEAN             security_pending;
 } tBTA_HH_DEV_CB;
 
 /* key board parsing control block */
@@ -327,6 +331,10 @@ typedef struct
     UINT8                   trace_level;            /* tracing level */
     UINT8                   cnt_num;                /* connected device number */
     BOOLEAN                 w4_disable;             /* w4 disable flag */
+    UINT8 timer_created;
+    timer_t sdp_timer_id;
+    UINT32 sdp_timeout_ms;
+    BD_ADDR in_bd_addr;
 }
 tBTA_HH_CB;
 
@@ -415,7 +423,7 @@ extern void bta_hh_le_write_char_descr_cmpl(tBTA_HH_DEV_CB *p_cb, tBTA_HH_DATA *
 extern void bta_hh_start_security(tBTA_HH_DEV_CB *p_cb, tBTA_HH_DATA *p_buf);
 extern void bta_hh_security_cmpl(tBTA_HH_DEV_CB *p_cb, tBTA_HH_DATA *p_buf);
 extern void bta_hh_le_update_scpp(tBTA_HH_DEV_CB *p_cb, tBTA_HH_DATA *p_buf);
-
+extern void bta_hh_le_notify_enc_cmpl(tBTA_HH_DEV_CB *p_cb, tBTA_HH_DATA *p_data);
 
 #if BTA_HH_DEBUG
 extern void bta_hh_trace_dev_db(void);

@@ -51,6 +51,8 @@
 #define BTA_AV_ACP_SIG_TIME_VAL 2000
 #endif
 
+/* constant for scb state machine, need to check in avrcp*/
+#define AV_SCB_INIT_STATE 0
 static void bta_av_acp_sig_timer_cback (TIMER_LIST_ENT *p_tle);
 
 /*******************************************************************************
@@ -499,6 +501,15 @@ void bta_av_rc_opened(tBTA_AV_CB *p_cb, tBTA_AV_DATA *p_data)
     for(i=0; i<BTA_AV_NUM_STRS; i++)
     {
         p_scb = p_cb->p_scb[i];
+        /*If SCB is created and it is Sink SCB, we don't need AVRCP Connection*/
+        if ((p_scb) && (p_scb->seps[p_scb->sep_idx].tsep == AVDT_TSEP_SNK)
+            && (p_scb->state > AV_SCB_INIT_STATE))
+        {
+            APPL_TRACE_WARNING0(" Has A2DP Sink, rejecting AVRCP ");
+            AVRC_Close(p_data->rc_conn_chg.handle);
+            return;
+        }
+
         if(p_scb && bdcmp(p_scb->peer_addr, p_data->rc_conn_chg.peer_addr) == 0)
         {
             p_scb->rc_handle = p_data->rc_conn_chg.handle;
@@ -1035,6 +1046,14 @@ void bta_av_rc_msg(tBTA_AV_CB *p_cb, tBTA_AV_DATA *p_data)
         av.browse_msg.p_msg = &p_data->rc_msg.msg;
 
         evt = bta_av_proc_browse_cmd(&rc_rsp, &p_data->rc_msg);
+        if (evt == 0)
+        {
+            APPL_TRACE_ERROR0("Browse PDU not supported");
+            rc_rsp.rsp.pdu    = AVRC_PDU_GENERAL_REJECT;
+            rc_rsp.rsp.status = AVRC_STS_BAD_CMD;
+            ctype = 0;
+            AVRC_BldBrowseResponse(0, &rc_rsp, &p_pkt);
+        }
     }
 #endif
 #if (AVRC_METADATA_INCLUDED == TRUE)
@@ -1502,7 +1521,9 @@ void bta_av_sig_chg(tBTA_AV_DATA *p_data)
                          * The following function shall send the event and start the recurring timer
                          */
                         bta_av_sig_timer(NULL);
-
+                        APPL_TRACE_DEBUG0("Re-start timer for AVDTP service");
+                        bta_sys_conn_open(BTA_ID_AV, p_cb->p_scb[xx]->app_id,
+                                p_cb->p_scb[xx]->peer_addr);
                         /* Possible collision : need to avoid outgoing processing while the timer is running */
                         p_cb->p_scb[xx]->coll_mask = BTA_AV_COLL_INC_TMR;
 
@@ -1534,23 +1555,34 @@ void bta_av_sig_chg(tBTA_AV_DATA *p_data)
     else
     {
         /* disconnected. */
+        int is_lcb_used = bta_av_cb.conn_lcb;
+        APPL_TRACE_DEBUG1(" is_lcb_used is %d",is_lcb_used);
         p_lcb = bta_av_find_lcb(p_data->str_msg.bd_addr, BTA_AV_LCB_FREE);
-        if(p_lcb && p_lcb->conn_msk)
+        if (p_lcb && (p_lcb->conn_msk || is_lcb_used))
         {
             APPL_TRACE_DEBUG1("conn_msk: 0x%x", p_lcb->conn_msk);
             /* clean up ssm  */
             for(xx=0; xx < BTA_AV_NUM_STRS; xx++)
             {
+
+                if ((p_cb->p_scb[xx]) &&
+                        (bdcmp(p_cb->p_scb[xx]->peer_addr, p_data->str_msg.bd_addr) == 0) )
+                {
+                    APPL_TRACE_DEBUG0("Closing timer for AVDTP service");
+                    bta_sys_conn_close(BTA_ID_AV, p_cb->p_scb[xx]->app_id,p_cb->p_scb[xx]->peer_addr);
+                }
                 mask = 1 << (xx + 1);
-                if ((mask & p_lcb->conn_msk) && (p_cb->p_scb[xx]) &&
+                if (((mask & p_lcb->conn_msk) || is_lcb_used)
+                     && (p_cb->p_scb[xx]) &&
                     (bdcmp(p_cb->p_scb[xx]->peer_addr, p_data->str_msg.bd_addr) == 0))
                 {
+                    APPL_TRACE_DEBUG0("Sending AVDT_DISCONNECT_EVT");
                     bta_av_ssm_execute(p_cb->p_scb[xx], BTA_AV_AVDT_DISCONNECT_EVT, NULL);
                 }
             }
         }
     }
-    APPL_TRACE_DEBUG1("conn_lcb: 0x%x", p_cb->conn_lcb);
+    APPL_TRACE_DEBUG1("sig_chg conn_lcb: 0x%x", p_cb->conn_lcb);
 }
 
 /*******************************************************************************
@@ -2052,6 +2084,11 @@ void bta_av_dereg_comp(tBTA_AV_DATA *p_data)
 #endif
                 bta_av_del_sdp_rec(&p_cb->sdp_a2d_handle);
                 bta_sys_remove_uuid(UUID_SERVCLASS_AUDIO_SOURCE);
+
+#ifdef BTA_AVK_INCLUDED
+                bta_av_del_sdp_rec(&p_cb->sdp_a2d_snk_handle);
+                bta_sys_remove_uuid(UUID_SERVCLASS_AUDIO_SINK);
+#endif
             }
         }
         else

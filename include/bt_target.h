@@ -84,6 +84,10 @@
 #define BLUETOOTH_QCOM_SW FALSE
 #endif
 
+#ifndef BTA_BLE_SKIP_CONN_UPD
+#define BTA_BLE_SKIP_CONN_UPD FALSE
+#endif
+
 #ifndef BTUI_OPS_FORMATS
 #define BTUI_OPS_FORMATS (BTA_OP_VCARD21_MASK | BTA_OP_ANY_MASK)
 #endif
@@ -190,7 +194,7 @@
 #endif
 
 #ifndef BTA_HD_INCLUDED
-#define BTA_HD_INCLUDED FALSE
+#define BTA_HD_INCLUDED TRUE
 #endif
 
 #ifndef BTA_HH_INCLUDED
@@ -217,9 +221,7 @@
 #define BTA_AV_VDP_INCLUDED FALSE
 #endif
 
-#ifndef BTA_AVK_INCLUDED
-#define BTA_AVK_INCLUDED FALSE
-#endif
+/* defined BTA_AVK_INCLUDED in Android.mk file based on target selected*/
 
 #ifndef BTA_PBS_INCLUDED
 #define BTA_PBS_INCLUDED FALSE
@@ -578,7 +580,7 @@
 /* Number of ACL buffers to assign to LE
    if the HCI buffer pool is shared with BR/EDR */
 #ifndef L2C_DEF_NUM_BLE_BUF_SHARED
-#define L2C_DEF_NUM_BLE_BUF_SHARED      1
+#define L2C_DEF_NUM_BLE_BUF_SHARED      2
 #endif
 
 /* Used by BTM when it sends HCI commands to the controller. */
@@ -763,6 +765,8 @@ BT_API extern void bte_main_hci_send (BT_HDR *p_msg, UINT16 event);
 BT_API extern void bte_main_lpm_allow_bt_device_sleep(void);
 #endif
 
+BT_API extern void bte_ssr_cleanup(void);
+
 #ifdef __cplusplus
 }
 #endif
@@ -872,7 +876,6 @@ and USER_HW_DISABLE_API macros */
 
 #if (BLUETOOTH_QCOM_SW == TRUE) /* Enable WBS only under this flag.*/
 #define BTM_WBS_INCLUDED            TRUE
-#define BLUETOOTH_QCOM_SW           TRUE
 #define BTC_INCLUDED                TRUE
 #else
 /* Includes WBS if TRUE */
@@ -1311,7 +1314,7 @@ and USER_HW_DISABLE_API macros */
 
 /* Whether link wants to be the master or the slave. */
 #ifndef L2CAP_DESIRED_LINK_ROLE
-#define L2CAP_DESIRED_LINK_ROLE     HCI_ROLE_SLAVE
+#define L2CAP_DESIRED_LINK_ROLE     HCI_ROLE_MASTER
 #endif
 
 /* Include Non-Flushable Packet Boundary Flag feature of Lisbon */
@@ -1420,6 +1423,10 @@ and USER_HW_DISABLE_API macros */
 #else
 #define TIMER_PARAM_TYPE    UINT32
 #endif
+#endif
+
+#ifndef HCI_RAW_CMD_INCLUDED
+#define HCI_RAW_CMD_INCLUDED    TRUE
 #endif
 
 /******************************************************************************
@@ -3526,7 +3533,7 @@ Range: Minimum 12000 (12 secs) when supporting PBF.
 #endif
 
 #ifndef SDP_AVRCP_1_5
-#define SDP_AVRCP_1_5               TRUE
+#define SDP_AVRCP_1_5               FALSE
 
 #if  SDP_AVRCP_1_5    == TRUE
 #ifndef AVCT_BROWSE_INCLUDED
@@ -3773,6 +3780,11 @@ The maximum number of payload octets that the local device can receive in a sing
 /* When TRUE indicates that an application task is to be run */
 #ifndef APPL_INCLUDED
 #define APPL_INCLUDED                TRUE
+#endif
+
+/* TEST_APP_INTERFACE */
+#ifndef TEST_APP_INTERFACE
+#define TEST_APP_INTERFACE          TRUE
 #endif
 
 /* When TRUE remote terminal code included (RPC MUST be included) */

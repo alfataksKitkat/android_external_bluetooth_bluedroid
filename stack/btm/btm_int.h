@@ -197,18 +197,25 @@ typedef struct
 
 #if BTM_BLE_CONFORMANCE_TESTING == TRUE
     BOOLEAN                 no_disc_if_pair_fail;
-    BOOLEAN			        enable_test_mac_val;
+    BOOLEAN                 enable_test_mac_val;
     BT_OCTET8               test_mac;
-    BOOLEAN			        enable_test_local_sign_cntr;
-    UINT32			        test_local_sign_cntr;
+    BOOLEAN                 enable_test_local_sign_cntr;
+    UINT32                  test_local_sign_cntr;
 #endif
 
 #if BLE_INCLUDED == TRUE
     tBTM_CMPL_CB        *p_le_test_cmd_cmpl_cb;   /* Callback function to be called when
                                                   LE test mode command has been sent successfully */
 #endif
+    tBTM_RSSI_MONITOR_CMD_CPL_CB p_rssi_monitor_cmd_cpl_cb; /* for rssi monitor command complete */
+    tBTM_RSSI_MONITOR_EVENT_CB   p_rssi_monitor_event_cb; /* for rssi threshold event */
 
 #endif  /* BLE_INCLUDED */
+
+#if HCI_RAW_CMD_INCLUDED == TRUE
+    tBTM_RAW_CMPL_CB     *p_hci_evt_cb;       /* Callback function to be called when
+                                                HCI event is received successfully */
+#endif
 
 #define BTM_DEV_STATE_WAIT_RESET_CMPLT  0
 #define BTM_DEV_STATE_WAIT_AFTER_RESET  1
@@ -271,6 +278,14 @@ typedef struct
 } tINQ_DB_ENT;
 
 
+enum
+{
+    INQ_NONE,
+    INQ_LE_OBSERVE,
+    INQ_GENERAL
+};
+typedef UINT8 tBTM_INQ_TYPE;
+
 typedef struct
 {
     tBTM_CMPL_CB *p_remname_cmpl_cb;
@@ -288,6 +303,7 @@ typedef struct
     UINT16           inq_scan_period;
     UINT16           inq_scan_type;
     UINT16           page_scan_type;        /* current page scan type */
+    tBTM_INQ_TYPE    scan_type;
 
     BD_ADDR          remname_bda;           /* Name of bd addr for active remote name request */
 #define BTM_RMT_NAME_INACTIVE       0
@@ -298,6 +314,8 @@ typedef struct
 
     tBTM_CMPL_CB    *p_inq_cmpl_cb;
     tBTM_INQ_RESULTS_CB *p_inq_results_cb;
+    tBTM_CMPL_CB    *p_inq_ble_cmpl_cb;     /*completion callback exclusively for LE Observe*/
+    tBTM_INQ_RESULTS_CB *p_inq_ble_results_cb;/*results callback exclusively for LE observe*/
     tBTM_CMPL_CB    *p_inqfilter_cmpl_cb;   /* Called (if not NULL) after inquiry filter completed */
     tBTM_INQ_DB_CHANGE_CB *p_inq_change_cb; /* Inquiry database changed callback    */
     UINT32           inq_counter;           /* Counter incremented each time an inquiry completes */
@@ -1064,6 +1082,10 @@ extern void btm_ble_remove_from_white_list_complete(UINT8 *p, UINT16 evt_len);
 extern void btm_ble_clear_white_list_complete(UINT8 *p, UINT16 evt_len);
 #endif  /* BLE_INCLUDED */
 
+/* HCI event handler */
+#if HCI_RAW_CMD_INCLUDED == TRUE
+extern void btm_hci_event(UINT8 *p, UINT8 event_code, UINT8 param_len);
+#endif
 /* Vendor Specific Command complete evt handler */
 extern void btm_vsc_complete (UINT8 *p, UINT16 cc_opcode, UINT16 evt_len,
                               tBTM_CMPL_CB *p_vsc_cplt_cback);
@@ -1099,6 +1121,8 @@ extern tBTM_STATUS  btm_sec_l2cap_access_req (BD_ADDR bd_addr, UINT16 psm,
 extern tBTM_STATUS  btm_sec_mx_access_request (BD_ADDR bd_addr, UINT16 psm, BOOLEAN is_originator,
                                         UINT32 mx_proto_id, UINT32 mx_chan_id,
                                         tBTM_SEC_CALLBACK *p_callback, void *p_ref_data);
+
+extern  tBTM_STATUS btm_sec_execute_procedure (tBTM_SEC_DEV_REC *p_dev_rec);
 extern void  btm_sec_conn_req (UINT8 *bda, UINT8 *dc);
 extern void btm_create_conn_cancel_complete (UINT8 *p);
 extern void btm_proc_lsto_evt(UINT16 handle, UINT16 timeout);
@@ -1132,8 +1156,6 @@ extern  BOOLEAN btm_sec_find_bonded_dev (UINT8 start_idx, UINT8 *p_found_idx, tB
 extern BOOLEAN btm_sec_is_a_bonded_dev (BD_ADDR bda);
 extern BOOLEAN btm_sec_is_le_capable_dev (BD_ADDR bda);
 #endif /* BLE_INCLUDED */
-extern BOOLEAN btm_sec_is_a_paired_dev (BD_ADDR bda);
-extern void btm_sec_set_hid_as_paired (BD_ADDR bda, BOOLEAN paired);
 
 extern tINQ_DB_ENT *btm_inq_db_new (BD_ADDR p_bda);
 

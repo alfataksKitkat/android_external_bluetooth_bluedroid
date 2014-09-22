@@ -28,6 +28,7 @@
 #include "bta_hh_co.h"
 #include "bta_gatt_api.h"
 #include "srvc_api.h"
+#include "btm_int.h"
 
 #ifndef BTA_HH_LE_RECONN
 #define BTA_HH_LE_RECONN    TRUE
@@ -638,6 +639,8 @@ void bta_hh_le_read_rpt_ref_descr(tBTA_HH_DEV_CB *p_dev_cb, tBTA_HH_LE_RPT *p_rp
 
     while (p_rpt != NULL)
     {
+        if (!p_rpt->in_use) break;
+
         if (p_rpt->rpt_type == BTA_HH_RPTT_INPUT)
         {
             /* is battery report */
@@ -718,9 +721,10 @@ void bta_hh_le_save_rpt_ref(tBTA_HH_DEV_CB *p_dev_cb, tBTA_HH_LE_RPT  *p_rpt,
 #endif
     }
 
-    if (p_rpt->index < BTA_HH_LE_RPT_MAX)
+    if (p_rpt->index < BTA_HH_LE_RPT_MAX - 1)
         p_rpt ++;
-
+    else
+        p_rpt = NULL;
     /* read next report reference descriptor  */
     bta_hh_le_read_rpt_ref_descr(p_dev_cb, p_rpt);
 
@@ -904,7 +908,7 @@ BOOLEAN bta_hh_le_write_char_clt_cfg(tBTA_HH_DEV_CB *p_cb,
     {
         BTA_GATTC_WriteCharDescr(p_cb->conn_id,
                             &descr_id,
-                            BTA_GATTC_TYPE_WRITE_NO_RSP,
+                            BTA_GATTC_TYPE_WRITE,
                             &value,
                             BTA_GATT_AUTH_REQ_NONE);
 
@@ -1091,7 +1095,7 @@ void bta_hh_le_expl_rpt(tBTA_HH_DEV_CB *p_dev_cb,
                                           p_char_id->char_id.inst_id,
                                           prop) == NULL)
         {
-            APPL_TRACE_ERROR0("Add report entry failed !!!")
+            APPL_TRACE_ERROR0("Add report entry failed !!!");
             break;
         }
 
@@ -1132,7 +1136,7 @@ void bta_hh_le_expl_boot_rpt(tBTA_HH_DEV_CB *p_dev_cb, UINT16 char_uuid,
                                       prop) == NULL)
 
     {
-        APPL_TRACE_ERROR0("Add report entry failed !!!")
+        APPL_TRACE_ERROR0("Add report entry failed !!!");
     }
 
     return;
@@ -1218,6 +1222,11 @@ void bta_hh_le_encrypt_cback(BD_ADDR bd_addr, void *p_ref_data, tBTM_STATUS resu
     tBTA_HH_DEV_CB *p_dev_cb;
 
     APPL_TRACE_ERROR0("bta_hh_le_encrypt_cback");
+    if(result == HCI_ERR_KEY_MISSING) {
+        APPL_TRACE_ERROR0("HCI_ERR_KEY_MISSING");
+        BTA_DmRemoveDevice(bd_addr);
+        return;
+    }
 
     if (idx != BTA_HH_IDX_INVALID)
         p_dev_cb = &bta_hh_cb.kdev[idx];
@@ -1264,6 +1273,28 @@ void bta_hh_security_cmpl(tBTA_HH_DEV_CB *p_cb, tBTA_HH_DATA *p_buf)
         bta_hh_le_api_disc_act(p_cb);
 
 }
+
+/*******************************************************************************
+**
+** Function         bta_hh_le_notify_enc_cmpl
+**
+** Description      process GATT encryption complete event
+**
+** Returns
+**
+*******************************************************************************/
+void bta_hh_le_notify_enc_cmpl(tBTA_HH_DEV_CB *p_cb, tBTA_HH_DATA *p_buf)
+{
+    if (p_cb == NULL || p_cb->security_pending == FALSE ||
+        p_buf == NULL || p_buf->le_enc_cmpl.client_if != bta_hh_cb.gatt_if)
+    {
+        return;
+    }
+
+    p_cb->security_pending = FALSE;
+    bta_hh_start_security(p_cb, NULL);
+}
+
 /*******************************************************************************
 **
 ** Function         bta_hh_start_security
@@ -1276,6 +1307,19 @@ void bta_hh_security_cmpl(tBTA_HH_DEV_CB *p_cb, tBTA_HH_DATA *p_buf)
 void bta_hh_start_security(tBTA_HH_DEV_CB *p_cb, tBTA_HH_DATA *p_buf)
 {
     UINT8           sec_flag=0;
+    tBTM_SEC_DEV_REC  *p_dev_rec;
+
+    p_dev_rec = btm_find_dev(p_cb->addr);
+    if (p_dev_rec)
+    {
+        if (p_dev_rec->sec_state == BTM_SEC_STATE_ENCRYPTING ||
+            p_dev_rec->sec_state == BTM_SEC_STATE_AUTHENTICATING)
+        {
+            /* if security collision happened, wait for encryption done */
+            p_cb->security_pending = TRUE;
+            return;
+        }
+    }
 
     /* verify bond */
     BTM_GetSecurityFlags(p_cb->addr, &sec_flag);
@@ -1379,7 +1423,7 @@ void bta_hh_le_close(tBTA_GATTC_CLOSE * p_data)
         p_buf->reason               = p_data->reason;
 
         p_dev_cb->conn_id           = BTA_GATT_INVALID_CONN_ID;
-
+        p_dev_cb->security_pending  = FALSE;
         bta_sys_sendmsg(p_buf);
     }
 }
@@ -1406,6 +1450,9 @@ void bta_hh_le_search_result(tBTA_GATTC_SRVC_RES *p_srvc_result)
             {
                 /* found HID primamry service */
                 /* TODO: proceed to find battery and device info */
+                if(bta_hh_le_add_hid_srvc_entry(p_dev_cb, 0))//make sure srvc_indx=0 is enabled
+                    APPL_TRACE_DEBUG0("bta_hh_le_search_result: hid_srvc[indx=0] enabled");
+
                 if (bta_hh_le_add_hid_srvc_entry(p_dev_cb, p_dev_cb->total_srvc))
                     p_dev_cb->total_srvc ++;
                 APPL_TRACE_DEBUG1("num of hid service: %d", p_dev_cb->total_srvc);
@@ -2285,6 +2332,7 @@ void bta_hh_le_open_fail(tBTA_HH_DEV_CB *p_cb, tBTA_HH_DATA *p_data)
         utl_freebuf((void **)&p_hid_srvc->rpt_map);
         memset(p_hid_srvc, 0, sizeof(tBTA_HH_LE_HID_SRVC));
     }
+    p_cb->total_srvc = 0;
 
     /* Report OPEN fail event */
     (*bta_hh_cb.p_cback)(BTA_HH_OPEN_EVT, (tBTA_HH *)&conn_dat);
@@ -2656,6 +2704,8 @@ static void bta_hh_le_add_dev_bg_conn(tBTA_HH_DEV_CB *p_cb, BOOLEAN check_bond)
 *******************************************************************************/
 UINT8 bta_hh_le_add_device(tBTA_HH_DEV_CB *p_cb, tBTA_HH_MAINT_DEV *p_dev_info)
 {
+    p_cb->hid_handle = BTA_HH_GET_LE_DEV_HDL(p_cb->index);
+    bta_hh_cb.le_cb_index[BTA_HH_GET_LE_CB_IDX(p_cb->hid_handle)] = p_cb->index;
 
     /* update DI information */
     bta_hh_update_di_info(p_cb,
@@ -2767,12 +2817,14 @@ static void bta_hh_gattc_callback(tBTA_GATTC_EVT event, tBTA_GATTC *p_data)
             break;
 
         case BTA_GATTC_DEREG_EVT: /* 1 */
-            bta_hh_cleanup_disable(p_data->reg_oper.status);
+            bta_hh_le_deregister();
             break;
 
         case BTA_GATTC_OPEN_EVT: /* 2 */
             p_dev_cb = bta_hh_le_find_dev_cb_by_bda(p_data->open.remote_bda);
-            bta_hh_sm_execute(p_dev_cb, BTA_HH_GATT_OPEN_EVT, (tBTA_HH_DATA *)&p_data->open);
+            if (p_dev_cb) {
+                bta_hh_sm_execute(p_dev_cb, BTA_HH_GATT_OPEN_EVT, (tBTA_HH_DATA *)&p_data->open);
+            }
             break;
 
         case BTA_GATTC_READ_CHAR_EVT: /* 3 */
@@ -2814,6 +2866,15 @@ static void bta_hh_gattc_callback(tBTA_GATTC_EVT event, tBTA_GATTC *p_data)
         case BTA_GATTC_NOTIF_EVT: /* 10 */
             bta_hh_le_input_rpt_notify(&p_data->notify);
             break;
+
+        case BTA_GATTC_ENC_CMPL_CB_EVT: /* 17 */
+            p_dev_cb = bta_hh_le_find_dev_cb_by_bda(p_data->enc_cmpl.remote_bda);
+            if (p_dev_cb) {
+                bta_hh_sm_execute(p_dev_cb, BTA_HH_GATT_ENC_CMPL_EVT,
+                              (tBTA_HH_DATA *)&p_data->enc_cmpl);
+            }
+            break;
+
         default:
             break;
     }
